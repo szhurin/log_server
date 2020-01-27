@@ -1,0 +1,74 @@
+version: "3.3"
+services:
+  # rabbit:
+  #   image: nexus.adam.loc:18889/goback-rabbit:latest
+  #   container_name: rabbit
+  #   ports:
+  #     - "5672:5672"
+  #     - "15672:15672"
+  #   environment:
+  #     - RABBITMQ_DEFAULT_USER=eva
+  #     - RABBITMQ_DEFAULT_PASS=eva
+  #   depends_on:
+  #     - clickhouse
+  #   command:
+  #     [
+  #       "wait-for-it.sh",
+  #       "-t",
+  #       "0",
+  #       "clickhouse:8123",
+  #       "--",
+  #       "docker-entrypoint.sh",
+  #       "rabbitmq-server",
+  #     ]
+
+  # postgres:
+  #   image: nexus.adam.loc:18889/postgres-goback:develop
+  #   container_name: pg
+  #   environment:
+  #     POSTGRES_USER: eva
+  #     POSTGRES_PASSWORD: eva
+  #     POSTGRES_DB: eva
+  #   ports:
+  #     - "5432:5432"
+
+  clickhouse:
+    # image: nexus.adam.loc:18889/security_log_clickhouse_dev:develop
+    image: local_clickhouse:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    env_file:
+      - ./docker/compose_node_env
+
+  # pg-migrations:
+  #   image: nexus.adam.loc:18889/goback-pg_migrations:develop
+  #   container_name: migrations
+  #   ports:
+  #     - "2222:2222"
+  #   env_file:
+  #     - ./docker/compose_node_env
+  #   depends_on:
+  #     - postgres
+  #   # nc -lk can onlly be uzed if -k option is available in some distros it is not, would need to move to ncat from paket nmap
+  #   command: "wait-for-it.sh -t 0 postgres:5432 -- npm start ; echo MIGRATION_DONE ; ncat -kl 0.0.0.0 2222"
+
+  security_log:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: local_sec_log:latest
+    # image: nexus.adam.loc:18889/security_log:${TAG:-develop}
+    container_name: security_log
+    ports:
+      - "1201:1201"
+      - "1202:1202"
+    environment:
+      NODE_ENV: local
+    env_file:
+      - ./docker/compose_node_env
+    depends_on:
+      - clickhouse
+    command: "wait-for-it.sh -t 0 clickhouse:8123 -- npm start"
+    # command: "wait-for-it.sh -t 0 rabbit:5672 -- npm start"

@@ -1,0 +1,7 @@
+
+to add a new type one needs to add a record with such record into "clickhouse_types.sql" and execute that code in working clickhouse instance (mqy be via clickhouse-client)
+
+(it is possible to execute all of the file contents, but if services will reload types in the moment during creation of the table? service will not accept unknown types till next load ~10min)
+
+
+the script (clickhouse_types.sql) will delete table with type and recreate it (table are not join so no references are made) usfull for initial setup

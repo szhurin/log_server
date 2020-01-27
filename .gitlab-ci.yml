@@ -1,0 +1,73 @@
+image: docker/compose:1.25.0-rc2-alpine
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  PRIVATE_REPO: nexus.adam.loc:18889
+  IMAGE: $PRIVATE_REPO/$CI_PROJECT_NAME
+  IMAGE_TAG: $CI_COMMIT_REF_NAME
+  ANSIBLE: nexus.adam.loc:18889/ansible
+
+.docker-login: &docker-login
+  stage: build
+  image: docker/compose:1.25.0-rc2-alpine
+  environment:
+    name: build
+  tags:
+    - docker
+  before_script:
+    - docker login -u $DOCKER_REG_USER -p $DOCKER_REG_PASS $PRIVATE_REPO
+
+build:
+  <<: *docker-login
+  script:
+    - env TAG=${IMAGE_TAG} docker-compose build --no-cache --pull $CI_PROJECT_NAME
+    - env TAG=${IMAGE_TAG} docker-compose push $CI_PROJECT_NAME
+  only:
+    - branches
+
+npm:
+  stage: test
+  environment:
+    name: build
+  tags:
+    - docker
+  before_script:
+    - docker login -u $DOCKER_REG_USER -p $DOCKER_REG_PASS $PRIVATE_REPO
+  script:
+    - docker-compose pull
+    - env TAG=${IMAGE_TAG} docker-compose -p ${CI_PROJECT_NAME} up -d --force-recreate
+    - docker build --no-cache --pull -f ./docker/Testing.Dockerfile -t npm_test .
+    - docker run --rm --network=${CI_PROJECT_NAME}_default -e API_TEST_STATUS_HOST=${CI_PROJECT_NAME} -e API_TEST_REQUEST_HOST=${CI_PROJECT_NAME} --env-file docker/compose_node_env npm_test
+  after_script:
+    - env TAG=${IMAGE_TAG} docker-compose rm -f -s
+  only:
+    - branches
+
+deploy_security_log:
+  stage: deploy
+  only:
+    - develop
+  tags:
+    - shell
+  before_script:
+    - rm -rf infra
+    - eval $(ssh-agent -s)
+    - ssh-add /home/ci/.ssh/id_rsa
+    - git clone git@git.adam.loc:ops/ansible/infra.git
+    - cd infra
+    - echo $ANSIBLE_VAULT_PASSWORD > .vault_password
+  script:
+    - |
+            docker run --rm -v $SSH_AUTH_SOCK:/ssh-agent \
+            -e SSH_AUTH_SOCK=/ssh-agent \
+            -v `pwd`:/etc/ansible \
+            -v $HOME:/root ${ANSIBLE} \
+            ansible-playbook playbooks/services/security_log.yml \
+            -i inventories/stage/hosts.yml -u ci -b -l microdocker.cain.loc \
+            -e "ansible_become_pass=$ANSIBLE_CI_SUDO_PASSWORD" --vault-password-file=.vault_password
+  after_script:
+    - ssh-agent -k > /dev/null 2>&1
+    - rm -rf infra

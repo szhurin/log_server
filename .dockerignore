@@ -1,0 +1,6 @@
+.git
+.gitignore
+.gitlab-ci.yml
+Dockerfile
+docker-compose-prod.yml
+docker-compose-stage.yml
